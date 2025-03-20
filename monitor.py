@@ -3,18 +3,15 @@ import time
 import requests
 import json
 import logging
+import sys
 from datetime import datetime, timezone, timedelta
 
-# Create logs directory if it doesn't exist
-os.makedirs("/home/user/app/logs", exist_ok=True)
-
-# Configure logging
+# Set up logging to stdout only since we may not have write permissions
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("/home/user/app/logs/monitor.log")
+        logging.StreamHandler()
     ]
 )
 
@@ -30,10 +27,7 @@ CHECK_INTERVAL = int(os.environ.get("CHECK_INTERVAL", "300"))  # 5 minutes
 MAX_RUNTIME = int(os.environ.get("MAX_RUNTIME", "21000"))  # 5h50m in seconds
 MAX_RETRY_ATTEMPTS = 3  # Maximum retry attempts for API calls
 
-# Status file for web interface
-STATUS_FILE = "/home/user/app/logs/status.json"
-
-# Initialize status
+# Status variables (in-memory only, no file writes)
 status = {
     "monitoring": True,
     "last_check": "Never",
@@ -45,13 +39,27 @@ status = {
     "logs": []
 }
 
-def update_status_file():
-    """Update the status file for the web interface"""
-    try:
-        with open(STATUS_FILE, 'w') as f:
-            json.dump(status, f)
-    except Exception as e:
-        logging.error(f"Error updating status file: {e}")
+# Keep a circular buffer of the last 100 log messages
+log_buffer = []
+MAX_LOG_ENTRIES = 100
+
+# Custom logger that also stores messages for web display
+class BufferedHandler(logging.Handler):
+    def emit(self, record):
+        msg = self.format(record)
+        log_buffer.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {msg}")
+        if len(log_buffer) > MAX_LOG_ENTRIES:
+            log_buffer.pop(0)
+        
+        # Update the status logs
+        status["logs"] = log_buffer.copy()
+
+# Add our custom handler
+logger = logging.getLogger()
+formatter = logging.Formatter('%(levelname)s - %(message)s')
+buffered_handler = BufferedHandler()
+buffered_handler.setFormatter(formatter)
+logger.addHandler(buffered_handler)
 
 def get_headers():
     return {
@@ -179,14 +187,12 @@ def monitor_and_restart():
     if not GITHUB_TOKEN:
         logging.error("GITHUB_TOKEN environment variable not set! Exiting.")
         status["monitoring"] = False
-        update_status_file()
         exit(1)
     
     workflow_id = get_workflow_id()
     if not workflow_id:
         logging.error("Could not find the workflow. Please check the workflow name.")
         status["monitoring"] = False
-        update_status_file()
         exit(1)
     
     # Initial trigger if no workflow is running
@@ -207,7 +213,6 @@ def monitor_and_restart():
                 logging.warning("No workflow runs found. Triggering new workflow run...")
                 status["workflow_status"] = "None Found"
                 status["current_workflow_id"] = "None"
-                update_status_file()
                 
                 trigger_workflow(workflow_id)
                 time.sleep(120)
@@ -230,7 +235,6 @@ def monitor_and_restart():
             if workflow_status == "completed" or conclusion in ["success", "failure", "cancelled", "timed_out"]:
                 logging.info(f"Workflow run #{run_id} is finished (conclusion: {conclusion}). Starting new run...")
                 status["next_restart"] = "Immediately (previous workflow completed)"
-                update_status_file()
                 
                 trigger_workflow(workflow_id)
                 time.sleep(120)  # Wait before checking again
@@ -254,11 +258,8 @@ def monitor_and_restart():
                     trigger_workflow(workflow_id)
                     time.sleep(120)
             
-            # Update status file for web interface
-            update_status_file()
-            
         except Exception as e:
-            logging.error(f"Error in monitoring loop: {e}", exc_info=True)
+            logging.error(f"Error in monitoring loop: {e}")
             time.sleep(60)  # Wait a bit on error
         
         # Wait before next check
@@ -266,11 +267,5 @@ def monitor_and_restart():
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
-    # Make sure logs directory exists
-    os.makedirs("/home/user/app/logs", exist_ok=True)
-    
-    # Initialize status file
-    update_status_file()
-    
     # Start monitoring
     monitor_and_restart()
