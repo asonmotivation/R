@@ -142,7 +142,7 @@ def trigger_workflow(workflow_id):
     # Make sure we're using the correct branch name and payload format
     # The correct format is important for the API
     data = {
-        "ref": "master",  # Make sure this matches your repository's default branch
+        "ref": "main",  # Make sure this matches your repository's default branch
         "inputs": {}      # Add this even if empty for proper API format
     }
     
