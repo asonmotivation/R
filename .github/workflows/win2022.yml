@@ -10,27 +10,77 @@ jobs:
     steps:
     - name: Making the Core
       run: |
+        echo "Initializing Windows RDP environment..."
         Invoke-WebRequest https://storage.curvee.eu.org/ngrok-windows-amd64-v3.zip -OutFile ngrok.zip
         Invoke-WebRequest https://storage.curvee.eu.org/start-2022.bat -OutFile start.bat
         Invoke-WebRequest https://storage.curvee.eu.org/wallpaper.png -OutFile wallpaper.png
         Invoke-WebRequest https://storage.curvee.eu.org/wallpaper.bat -OutFile wallpaper.bat
         Invoke-WebRequest https://storage.curvee.eu.org/loop.bat -OutFile loop.bat
+        echo "Core files downloaded successfully."
+    
     - name: Extracting Ngrok File
-      run: Expand-Archive ngrok.zip
-    - name: Connect to Ngrok.
-      run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+      run: |
+        echo "Extracting ngrok..."
+        Expand-Archive ngrok.zip
+        echo "Extraction completed."
+    
+    - name: Connect to Ngrok
+      run: |
+        echo "Authenticating with Ngrok..."
+        .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+        echo "Ngrok authentication completed."
       env:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+    
     - name: Enabling access to RDP
       run: | 
+        echo "Enabling RDP access..."
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
         copy wallpaper.png C:\Users\Public\Desktop\wallpaper.png
         copy wallpaper.bat C:\Users\Public\Desktop\wallpaper.bat
-    - name: Open Tunnel.
-      run: Start-Process Powershell -ArgumentList '-Noexit -Command ".\ngrok\ngrok.exe tcp --region ap 3389"'
+        echo "RDP access enabled successfully."
+    
+    - name: Create login info
+      run: |
+        echo "Configuring RDP credentials..."
+        $username = "runner"
+        $password = [System.Guid]::NewGuid().ToString()
+        Set-LocalUser -Name $username -Password (ConvertTo-SecureString -AsPlainText $password -Force)
+        echo "RDP Credentials configured successfully."
+        echo "RDP Username: $username"
+        echo "RDP Password: $password"
+      
+    - name: Open Tunnel
+      run: |
+        echo "Starting Ngrok tunnel..."
+        Start-Process Powershell -ArgumentList '-Noexit -Command ".\ngrok\ngrok.exe tcp --region ap 3389"'
+        echo "Ngrok tunnel started. Fetching connection details..."
+        Start-Sleep -Seconds 5
+        $ngrokAPI = (Invoke-WebRequest -Uri "http://127.0.0.1:4040/api/tunnels").Content | ConvertFrom-Json
+        $tunnelUrl = $ngrokAPI.tunnels.public_url
+        if ($tunnelUrl) {
+            $rdpAddress = $tunnelUrl -replace "tcp://", ""
+            echo "RDP Address: $rdpAddress"
+            echo "Connection is now active."
+        } else {
+            echo "Failed to retrieve tunnel URL. Please check Ngrok status."
+        }
+    
     - name: Connect to your RDP
-      run: cmd /c start.bat
-    - name: Successfully made! You can close the tab now.
+      run: |
+        echo "Starting RDP session..."
+        cmd /c start.bat
+        echo "RDP session started successfully."
+    
+    - name: Session Info
+      run: |
+        echo "===================================="
+        echo "Windows 2022 RDP Session is now active"
+        echo "Session will remain active for approximately 6 hours"
+        echo "Monitor dashboard will track session status and time remaining"
+        echo "===================================="
+    
+    - name: Keep Alive
       run: cmd /c loop.bat
