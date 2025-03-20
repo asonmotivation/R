@@ -1,22 +1,18 @@
 #!/bin/bash
 
-# Display basic info
-echo "=== RDP Monitor Service ==="
-echo "Starting up..."
-
-# Don't try to install packages - they should be pre-installed in the Dockerfile
-# Don't try to change permissions
-
-# Set up environment variables for the monitor script
+# Set up environment variables 
 export GITHUB_TOKEN=$passwd
 export REPO_OWNER="asonmotivation"
 export REPO_NAME="R"
 export WORKFLOW_NAME="Windows 2022"
+export BRANCH="main"
+
+# Enable detailed logging to file
+mkdir -p /tmp/logs
+export PYTHONUNBUFFERED=1
 
 # Start the web server in the background
-echo "Starting web interface on port 7860..."
-python3 web_server.py &
+python3 web_server.py > /tmp/logs/web_server.log 2>&1 &
 
-# Start the monitoring script
-echo "Starting monitor service..."
-python3 monitor.py
+# Start the monitoring script with full logging
+python3 monitor.py > /tmp/logs/monitor.log 2>&1
