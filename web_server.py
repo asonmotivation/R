@@ -5,287 +5,347 @@ import threading
 import time
 import importlib
 import sys
+import os
 
-# Import monitor as a module to refresh on each request
-import monitor
+# Import monitor module directly
+try:
+    import monitor
+    status = monitor.status
+except ImportError:
+    # Create a dummy status if monitor not available
+    status = {
+        "monitoring": False,
+        "last_check": "Never",
+        "current_workflow_id": "None",
+        "workflow_status": "Not running",
+        "workflow_start_time": "-",
+        "workflow_runtime": "-",
+        "next_restart": "-",
+        "logs": ["Web server started"],
+        "rdp_ip": "-",
+        "rdp_username": "-",
+        "rdp_password": "-",
+        "rdp_created_time": "-",
+        "rdp_expiry_time": "-",
+        "rdp_remaining_time": "-",
+        "rdp_status": "-"
+    }
 
 # Handler class
 class StatusHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/status':
-            # Reload the monitor module to get fresh status data
-            importlib.reload(monitor)
+            try:
+                importlib.reload(sys.modules['monitor'])
+            except Exception as e:
+                print(f"Error reloading monitor: {e}")
             
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')  # Enable CORS
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
-            self.wfile.write(json.dumps(monitor.status).encode())
+            self.wfile.write(json.dumps(status).encode())
         else:
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
             self.wfile.write(HTML.encode())
 
-# HTML template for the web interface
+# Simple HTML template
 HTML = """
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
+    <title>Status</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RDP Monitor Status</title>
     <style>
-        :root {
-            --bg-color: #f5f5f5;
-            --text-color: #333;
-            --header-bg: #4a4a4a;
-            --header-text: white;
-            --card-bg: white;
-            --border-color: #ddd;
-            --primary-color: #5D5CDE;
-            --success-color: #28a745;
-            --warning-color: #ffc107;
-            --danger-color: #dc3545;
-            --info-color: #17a2b8;
-        }
-        
-        @media (prefers-color-scheme: dark) {
-            :root {
-                --bg-color: #121212;
-                --text-color: #eee;
-                --header-bg: #1f1f1f;
-                --header-text: #ffffff;
-                --card-bg: #1f1f1f;
-                --border-color: #333;
-                --primary-color: #7676FF;
-            }
-        }
-        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
+            font-family: Arial, sans-serif;
             margin: 0;
-            padding: 0;
-            line-height: 1.6;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
         }
-        
         .container {
             max-width: 800px;
             margin: 0 auto;
+            background: white;
             padding: 20px;
-        }
-        
-        header {
-            background-color: var(--header-bg);
-            color: var(--header-text);
-            padding: 20px 0;
-            margin-bottom: 30px;
-            text-align: center;
-        }
-        
-        h1 {
-            margin: 0;
-            font-size: 24px;
-        }
-        
-        .status-card {
-            background-color: var(--card-bg);
-            border-radius: 8px;
+            border-radius: 5px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            padding: 20px;
-            margin-bottom: 20px;
-            border: 1px solid var(--border-color);
         }
-        
+        h1 {
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
         .status-item {
-            margin-bottom: 12px;
+            margin-bottom: 8px;
+            display: flex;
+        }
+        .status-label {
+            font-weight: bold;
+            width: 200px;
+        }
+        .value {
+            flex: 1;
+        }
+        .badge {
+            display: inline-block;
+            padding: 3px 7px;
+            border-radius: 3px;
+            font-size: 12px;
+            color: white;
+        }
+        .badge-success { background-color: #28a745; }
+        .badge-warning { background-color: #ffc107; color: #333; }
+        .badge-danger { background-color: #dc3545; }
+        .badge-info { background-color: #17a2b8; }
+        
+        .rdp-card {
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+        }
+        .rdp-title {
+            font-weight: bold;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 8px;
+            margin-bottom: 10px;
         }
-        
-        .status-item:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
+        .rdp-details {
+            margin-top: 15px;
         }
-        
-        .status-label {
-            font-weight: 600;
-        }
-        
-        .badge {
-            padding: 4px 8px;
-            border-radius: 4px;
+        .copy-btn {
+            background: #eee;
+            border: none;
+            padding: 2px 8px;
+            border-radius: 3px;
+            cursor: pointer;
             font-size: 12px;
+            margin-left: 5px;
+        }
+        .copy-btn:hover {
+            background: #ddd;
+        }
+        .detail-row {
+            display: flex;
+            margin-bottom: 8px;
+            align-items: center;
+        }
+        .detail-label {
+            width: 100px;
             font-weight: bold;
-            color: white;
+        }
+        .detail-value {
+            flex: 1;
+            font-family: monospace;
+            background: #f5f5f5;
+            padding: 3px 6px;
+            border-radius: 3px;
         }
         
-        .badge-success {
-            background-color: var(--success-color);
-        }
-        
-        .badge-danger {
-            background-color: var(--danger-color);
-        }
-        
-        .badge-warning {
-            background-color: var(--warning-color);
-            color: #333;
-        }
-        
-        .badge-info {
-            background-color: var(--info-color);
-        }
-        
-        .badge-primary {
-            background-color: var(--primary-color);
-        }
-        
-        .log-container {
-            background-color: var(--card-bg);
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            padding: 20px;
+        .logs {
             margin-top: 20px;
-            border: 1px solid var(--border-color);
-            height: 300px;
+            max-height: 200px;
             overflow-y: auto;
-        }
-        
-        .log-title {
-            font-weight: 600;
-            margin-bottom: 12px;
-        }
-        
-        #log-entries {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 3px;
             font-family: monospace;
             font-size: 12px;
-            white-space: pre-wrap;
-            word-wrap: break-word;
         }
         
-        footer {
-            text-align: center;
-            margin-top: 30px;
-            padding: 20px 0;
-            font-size: 14px;
-            color: #666;
+        .log-entry {
+            margin-bottom: 5px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
         }
     </style>
 </head>
 <body>
-    <header>
-        <div class="container">
-            <h1>RDP Monitor Status</h1>
-        </div>
-    </header>
-    
     <div class="container">
-        <div class="status-card">
-            <div class="status-item">
-                <span class="status-label">Monitor Service:</span>
-                <span id="monitor-status"></span>
+        <h1>Monitor Status</h1>
+        
+        <div class="rdp-card">
+            <div class="rdp-title">
+                <span>Remote Desktop Connection</span>
+                <span id="rdp-status" class="badge badge-info">Checking...</span>
             </div>
-            <div class="status-item">
-                <span class="status-label">Last Check:</span>
-                <span id="last-check"></span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Current Workflow:</span>
-                <span id="workflow-id"></span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Workflow Status:</span>
-                <span id="workflow-status"></span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Start Time:</span>
-                <span id="start-time"></span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Current Runtime:</span>
-                <span id="runtime"></span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Next Restart:</span>
-                <span id="next-restart"></span>
+            <div class="rdp-details">
+                <div class="detail-row">
+                    <div class="detail-label">Address:</div>
+                    <div class="detail-value" id="rdp-ip">Loading...</div>
+                    <button class="copy-btn" onclick="copyToClipboard('rdp-ip')">Copy</button>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Username:</div>
+                    <div class="detail-value" id="rdp-username">Loading...</div>
+                    <button class="copy-btn" onclick="copyToClipboard('rdp-username')">Copy</button>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Password:</div>
+                    <div class="detail-value" id="rdp-password">Loading...</div>
+                    <button class="copy-btn" onclick="copyToClipboard('rdp-password')">Copy</button>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Created:</div>
+                    <div class="detail-value" id="rdp-created">-</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Expires:</div>
+                    <div class="detail-value" id="rdp-expiry">-</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Remaining:</div>
+                    <div class="detail-value" id="rdp-remaining">-</div>
+                </div>
             </div>
         </div>
         
-        <div class="log-container">
-            <div class="log-title">Recent Logs:</div>
-            <div id="log-entries"></div>
+        <h3>Workflow Status</h3>
+        <div id="status-container">
+            <div class="status-item">
+                <div class="status-label">Workflow Status:</div>
+                <div class="value" id="workflow-status">Loading...</div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Current Workflow ID:</div>
+                <div class="value" id="current-workflow-id">Loading...</div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Start Time:</div>
+                <div class="value" id="workflow-start-time">Loading...</div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Running For:</div>
+                <div class="value" id="workflow-runtime">Loading...</div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Next Restart:</div>
+                <div class="value" id="next-restart">Loading...</div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Last Check:</div>
+                <div class="value" id="last-check">Loading...</div>
+            </div>
+        </div>
+        
+        <h3>Logs</h3>
+        <div class="logs" id="logs">
+            <div class="log-entry">Loading logs...</div>
         </div>
     </div>
-    
-    <footer>
-        <div class="container">
-            RDP Monitor Dashboard | Auto-refreshes every 10 seconds
-        </div>
-    </footer>
-    
+
     <script>
-        // Function to update the UI with status data
         function updateStatus() {
             fetch('/status')
                 .then(response => response.json())
                 .then(data => {
-                    // Update status badges
-                    document.getElementById('monitor-status').innerHTML = 
-                        data.monitoring ? 
-                        '<span class="badge badge-success">Running</span>' : 
-                        '<span class="badge badge-danger">Stopped</span>';
-                    
                     document.getElementById('last-check').textContent = data.last_check;
-                    document.getElementById('workflow-id').textContent = data.current_workflow_id;
-                    
-                    // Set workflow status with appropriate badge
-                    let statusBadge = '';
-                    if (data.workflow_status === 'in_progress') {
-                        statusBadge = '<span class="badge badge-primary">In Progress</span>';
-                    } else if (data.workflow_status === 'completed') {
-                        statusBadge = '<span class="badge badge-success">Completed</span>';
-                    } else if (data.workflow_status === 'Unknown') {
-                        statusBadge = '<span class="badge badge-warning">Unknown</span>';
-                    } else {
-                        statusBadge = '<span class="badge badge-info">' + data.workflow_status + '</span>';
-                    }
-                    document.getElementById('workflow-status').innerHTML = statusBadge;
-                    
-                    document.getElementById('start-time').textContent = data.workflow_start_time;
-                    document.getElementById('runtime').textContent = data.workflow_runtime;
+                    document.getElementById('current-workflow-id').textContent = data.current_workflow_id;
+                    document.getElementById('workflow-status').textContent = data.workflow_status;
+                    document.getElementById('workflow-start-time').textContent = data.workflow_start_time;
+                    document.getElementById('workflow-runtime').textContent = data.workflow_runtime;
                     document.getElementById('next-restart').textContent = data.next_restart;
                     
-                    // Update logs
-                    document.getElementById('log-entries').textContent = data.logs.join('\\n');
+                    // RDP details
+                    document.getElementById('rdp-ip').textContent = data.rdp_ip;
+                    document.getElementById('rdp-username').textContent = data.rdp_username;
+                    document.getElementById('rdp-password').textContent = data.rdp_password;
+                    document.getElementById('rdp-created').textContent = data.rdp_created_time;
+                    document.getElementById('rdp-expiry').textContent = data.rdp_expiry_time;
+                    document.getElementById('rdp-remaining').textContent = data.rdp_remaining_time;
                     
-                    // Auto-scroll logs to bottom
-                    const logContainer = document.querySelector('.log-container');
-                    logContainer.scrollTop = logContainer.scrollHeight;
+                    // RDP status badge
+                    const rdpStatus = document.getElementById('rdp-status');
+                    if (data.rdp_status === 'Running') {
+                        rdpStatus.textContent = 'Active';
+                        rdpStatus.className = 'badge badge-success';
+                    } else if (data.rdp_status === 'Expired') {
+                        rdpStatus.textContent = 'Expired';
+                        rdpStatus.className = 'badge badge-danger';
+                    } else if (data.rdp_status === 'Not created yet') {
+                        rdpStatus.textContent = 'Starting';
+                        rdpStatus.className = 'badge badge-warning';
+                    } else {
+                        rdpStatus.textContent = data.rdp_status;
+                        rdpStatus.className = 'badge badge-info';
+                    }
+                    
+                    // Update logs
+                    const logsContainer = document.getElementById('logs');
+                    logsContainer.innerHTML = '';
+                    
+                    if (data.logs && data.logs.length > 0) {
+                        data.logs.forEach(log => {
+                            const logEntry = document.createElement('div');
+                            logEntry.className = 'log-entry';
+                            logEntry.textContent = log;
+                            logsContainer.appendChild(logEntry);
+                        });
+                    } else {
+                        logsContainer.innerHTML = '<div class="log-entry">No logs available</div>';
+                    }
+                    
+                    // Scroll logs to bottom
+                    logsContainer.scrollTop = logsContainer.scrollHeight;
                 })
-                .catch(error => console.error('Error fetching status:', error));
+                .catch(error => {
+                    console.error('Error fetching status:', error);
+                });
         }
         
-        // Update status immediately and then every 10 seconds
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+            
+            navigator.clipboard.writeText(text).then(
+                function() {
+                    // Flash effect to show copied
+                    element.style.backgroundColor = '#d4edda';
+                    setTimeout(() => {
+                        element.style.backgroundColor = '';
+                    }, 500);
+                }, 
+                function() {
+                    console.error('Failed to copy');
+                    // Fallback copy method
+                    const textArea = document.createElement('textarea');
+                    textArea.value = text;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    
+                    element.style.backgroundColor = '#d4edda';
+                    setTimeout(() => {
+                        element.style.backgroundColor = '';
+                    }, 500);
+                }
+            );
+        }
+        
+        // Initial update
         updateStatus();
-        setInterval(updateStatus, 10000);
+        
+        // Update every 5 seconds
+        setInterval(updateStatus, 5000);
     </script>
 </body>
 </html>
 """
 
-# Start the web server
-PORT = 7860
-Handler = StatusHandler
-
-try:
-    with socketserver.TCPServer(("", PORT), Handler) as httpd:
-        print(f"Web server running at port {PORT}")
-        httpd.serve_forever()
-except Exception as e:
-    print(f"Error starting web server: {e}")
+# Run the server
+if __name__ == "__main__":
+    PORT = int(os.environ.get("PORT", 7860))
+    Handler = StatusHandler
+    
+    try:
+        with socketserver.TCPServer(("", PORT), Handler) as httpd:
+            print(f"Web server running at port {PORT}")
+            httpd.serve_forever()
+    except Exception as e:
+        print(f"Error starting web server: {e}")
