@@ -142,14 +142,14 @@ def trigger_workflow(workflow_id):
     # Make sure we're using the correct branch name and payload format
     # The correct format is important for the API
     data = {
-        "ref": "main",  # Make sure this matches your repository's default branch
+        "ref": BRANCH,  # Use the BRANCH environment variable instead of hardcoded value
         "inputs": {}      # Add this even if empty for proper API format
     }
     
     retry_count = 0
     while retry_count < MAX_RETRY_ATTEMPTS:
         try:
-            logging.info(f"Triggering workflow with branch: master")
+            logging.info(f"Triggering workflow with branch: {BRANCH}")
             response = requests.post(url, headers=get_headers(), data=json.dumps(data))
             
             if response.status_code == 204:  # Success for this API returns 204 No Content
@@ -218,11 +218,16 @@ def monitor_and_restart():
         status["monitoring"] = False
         exit(1)
     
+    # Track the last time we triggered a workflow to avoid spamming
+    last_trigger_time = None
+    min_trigger_interval = 300  # 5 minutes minimum between trigger attempts
+    
     # Initial trigger if no workflow is running
     latest_run = get_latest_run(workflow_id)
     if not latest_run or latest_run["status"] != "in_progress":
         logging.info("No active workflow run found. Triggering initial workflow run...")
-        trigger_workflow(workflow_id)
+        if trigger_workflow(workflow_id):
+            last_trigger_time = datetime.now(timezone.utc)
     
     while True:
         try:
@@ -230,15 +235,28 @@ def monitor_and_restart():
             now = datetime.now(timezone.utc)
             status["last_check"] = format_time(now)
             
+            # Check if we can trigger a new workflow (anti-spam)
+            can_trigger = True
+            if last_trigger_time:
+                seconds_since_last_trigger = (now - last_trigger_time).total_seconds()
+                if seconds_since_last_trigger < min_trigger_interval:
+                    can_trigger = False
+                    logging.info(f"Cooling down. {min_trigger_interval - seconds_since_last_trigger:.0f} seconds until next possible trigger.")
+            
             latest_run = get_latest_run(workflow_id)
             
             if not latest_run:
-                logging.warning("No workflow runs found. Triggering new workflow run...")
+                logging.warning("No workflow runs found.")
                 status["workflow_status"] = "None Found"
                 status["current_workflow_id"] = "None"
                 
-                trigger_workflow(workflow_id)
-                time.sleep(120)
+                if can_trigger:
+                    logging.info("Triggering new workflow run...")
+                    if trigger_workflow(workflow_id):
+                        last_trigger_time = now
+                else:
+                    logging.info("Skipping trigger due to cool-down period.")
+                time.sleep(60)
                 continue
                 
             run_id = latest_run["id"]
@@ -256,11 +274,18 @@ def monitor_and_restart():
             
             # Check if workflow is completed or failed
             if workflow_status == "completed" or conclusion in ["success", "failure", "cancelled", "timed_out"]:
-                logging.info(f"Workflow run #{run_id} is finished (conclusion: {conclusion}). Starting new run...")
-                status["next_restart"] = "Immediately (previous workflow completed)"
+                logging.info(f"Workflow run #{run_id} is finished (conclusion: {conclusion}).")
                 
-                trigger_workflow(workflow_id)
-                time.sleep(120)  # Wait before checking again
+                if can_trigger:
+                    logging.info("Starting new run...")
+                    status["next_restart"] = "Immediately (previous workflow completed)"
+                    if trigger_workflow(workflow_id):
+                        last_trigger_time = now
+                else:
+                    logging.info("Waiting for cool-down period before starting new run.")
+                    status["next_restart"] = f"After cool-down ({min_trigger_interval - (now - last_trigger_time).total_seconds():.0f}s)"
+                    
+                time.sleep(60)  # Check more frequently during transitions
                 
             # If workflow is running, check if it's nearing the timeout
             elif workflow_status == "in_progress":
@@ -276,18 +301,21 @@ def monitor_and_restart():
                 logging.info(f"Workflow #{run_id} running for {hours:.2f} hours")
                 
                 # If approaching timeout (5h50m), start a new workflow
-                if runtime > MAX_RUNTIME:
+                if runtime > MAX_RUNTIME and can_trigger:
                     logging.warning(f"Workflow #{run_id} approaching timeout. Starting new run...")
-                    trigger_workflow(workflow_id)
-                    time.sleep(120)
+                    if trigger_workflow(workflow_id):
+                        last_trigger_time = now
+                    time.sleep(60)
+                else:
+                    # If not close to timeout, check less frequently
+                    check_interval = min(CHECK_INTERVAL, 300)  # Check at most every 5 minutes
+                    logging.info(f"Waiting {check_interval/60} minutes before next check...")
+                    time.sleep(check_interval)
             
         except Exception as e:
             logging.error(f"Error in monitoring loop: {e}")
-            time.sleep(60)  # Wait a bit on error
-        
-        # Wait before next check
-        logging.info(f"Waiting {CHECK_INTERVAL/60} minutes before next check...")
-        time.sleep(CHECK_INTERVAL)
+            # Use exponential backoff for error cases
+            time.sleep(60)
 
 if __name__ == "__main__":
     # Start monitoring
