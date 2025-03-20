@@ -138,15 +138,27 @@ def get_latest_run(workflow_id):
 def trigger_workflow(workflow_id):
     """Trigger the workflow using the workflow_dispatch event"""
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/actions/workflows/{workflow_id}/dispatches"
-    data = {"ref": BRANCH}
+    
+    # Make sure we're using the correct branch name and payload format
+    # The correct format is important for the API
+    data = {
+        "ref": "master",  # Make sure this matches your repository's default branch
+        "inputs": {}      # Add this even if empty for proper API format
+    }
     
     retry_count = 0
     while retry_count < MAX_RETRY_ATTEMPTS:
         try:
+            logging.info(f"Triggering workflow with branch: master")
             response = requests.post(url, headers=get_headers(), data=json.dumps(data))
+            
+            if response.status_code == 204:  # Success for this API returns 204 No Content
+                logging.info("🚀 Successfully triggered workflow!")
+                return True
+                
+            # If not 204, log the error details
+            logging.error(f"Error response: {response.status_code} - {response.text}")
             response.raise_for_status()
-            logging.info("🚀 Successfully triggered workflow!")
-            return True
             
         except requests.exceptions.RequestException as e:
             retry_count += 1
@@ -155,6 +167,17 @@ def trigger_workflow(workflow_id):
                 time.sleep(60)  # Wait 1 minute before retrying
             else:
                 logging.error("Failed to trigger workflow after maximum retry attempts")
+                
+                # Try an alternative approach - list runs instead of trigger
+                try:
+                    logging.info("Attempting to list workflow runs as fallback...")
+                    list_url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/actions/workflows/{workflow_id}/runs"
+                    list_response = requests.get(list_url, headers=get_headers())
+                    list_response.raise_for_status()
+                    logging.info(f"Workflow runs exist, you may need to trigger manually: {REPO_OWNER}/{REPO_NAME}/actions")
+                except Exception as list_err:
+                    logging.error(f"Error listing runs: {list_err}")
+                
                 return False
 
 def calculate_runtime(run):
