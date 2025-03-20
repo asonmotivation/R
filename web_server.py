@@ -1,59 +1,23 @@
 import http.server
 import socketserver
 import json
-import os
-import time
 import threading
-from datetime import datetime
+import time
+from monitor import status  # Import status directly from monitor module
 
-# Ensure log directory exists
-os.makedirs("/home/user/app/logs", exist_ok=True)
-
-# Global status dictionary to be updated by the monitor script
-status = {
-    "monitoring": True,
-    "last_check": "Never",
-    "current_workflow_id": "None",
-    "workflow_status": "Unknown",
-    "workflow_start_time": "Unknown",
-    "workflow_runtime": "0 hours",
-    "next_restart": "Unknown",
-    "logs": []
-}
-
-# Function to format time
-def format_time(timestamp):
-    return datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
-
-# Status file path for communication between monitor and web server
-STATUS_FILE = "/home/user/app/logs/status.json"
-
-# Log file to read
-LOG_FILE = "/home/user/app/logs/monitor.log"
-
-# Function to read and update status
-def update_status():
-    global status
-    while True:
-        try:
-            if os.path.exists(STATUS_FILE):
-                with open(STATUS_FILE, 'r') as f:
-                    status = json.load(f)
-            
-            # Read the last few lines from the log
-            if os.path.exists(LOG_FILE):
-                with open(LOG_FILE, 'r') as f:
-                    logs = f.readlines()
-                    status["logs"] = logs[-20:]  # Get last 20 lines
-                    
-        except Exception as e:
-            print(f"Error updating status: {e}")
-        
-        time.sleep(5)  # Update every 5 seconds
-
-# Start the status update thread
-status_thread = threading.Thread(target=update_status, daemon=True)
-status_thread.start()
+# Handler class
+class StatusHandler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/status':
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(status).encode())
+        else:
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(HTML.encode())
 
 # HTML template for the web interface
 HTML = """
@@ -290,7 +254,7 @@ HTML = """
                     document.getElementById('next-restart').textContent = data.next_restart;
                     
                     // Update logs
-                    document.getElementById('log-entries').textContent = data.logs.join('');
+                    document.getElementById('log-entries').textContent = data.logs.join('\\n');
                     
                     // Auto-scroll logs to bottom
                     const logContainer = document.querySelector('.log-container');
@@ -306,20 +270,6 @@ HTML = """
 </body>
 </html>
 """
-
-# Handler class
-class StatusHandler(http.server.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == '/status':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps(status).encode())
-        else:
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(HTML.encode())
 
 # Start the web server
 PORT = 7860
