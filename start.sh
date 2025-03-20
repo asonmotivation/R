@@ -13,8 +13,9 @@ export REPO_OWNER="asonmotivation"
 export REPO_NAME="R"
 export WORKFLOW_NAME="Windows 2022"
 
-# Create a log directory
-mkdir -p /app/logs
+# Make sure log directory exists and has right permissions
+mkdir -p /home/user/app/logs
+chmod 777 /home/user/app/logs
 
 # Start the web server in the background
 echo "Starting web interface on port 7860..."
