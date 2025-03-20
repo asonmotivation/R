@@ -6,6 +6,9 @@ import time
 import threading
 from datetime import datetime
 
+# Ensure log directory exists
+os.makedirs("/home/user/app/logs", exist_ok=True)
+
 # Global status dictionary to be updated by the monitor script
 status = {
     "monitoring": True,
@@ -23,10 +26,10 @@ def format_time(timestamp):
     return datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
 # Status file path for communication between monitor and web server
-STATUS_FILE = "/app/logs/status.json"
+STATUS_FILE = "/home/user/app/logs/status.json"
 
 # Log file to read
-LOG_FILE = "/app/logs/monitor.log"
+LOG_FILE = "/home/user/app/logs/monitor.log"
 
 # Function to read and update status
 def update_status():
@@ -322,6 +325,9 @@ class StatusHandler(http.server.SimpleHTTPRequestHandler):
 PORT = 7860
 Handler = StatusHandler
 
-with socketserver.TCPServer(("", PORT), Handler) as httpd:
-    print(f"Web server running at port {PORT}")
-    httpd.serve_forever()
+try:
+    with socketserver.TCPServer(("", PORT), Handler) as httpd:
+        print(f"Web server running at port {PORT}")
+        httpd.serve_forever()
+except Exception as e:
+    print(f"Error starting web server: {e}")
