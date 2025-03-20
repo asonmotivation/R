@@ -6,6 +6,12 @@ import time
 import importlib
 import sys
 import os
+import argparse
+
+# Set up argument parser for port configuration
+parser = argparse.ArgumentParser(description='RDP Monitor Web Dashboard')
+parser.add_argument('--port', type=int, default=8000, help='Port to run the server on (default: 8000)')
+args = parser.parse_args()
 
 # Import monitor module directly
 try:
@@ -62,20 +68,30 @@ HTML = """
     <style>
         :root {
             --primary: #28a745;
+            --primary-dark: #218838;
             --secondary: #17a2b8;
+            --secondary-dark: #138496;
             --warning: #ffc107;
+            --warning-dark: #e0a800;
             --danger: #dc3545;
-            --dark: #333;
-            --light: #f5f5f5;
-            --border: #ddd;
+            --danger-dark: #c82333;
+            --dark: #343a40;
+            --darker: #212529;
+            --darkest: #111418;
+            --light: #adb5bd;
+            --lighter: #ced4da;
+            --lightest: #e9ecef;
+            --border: #495057;
+            --text: #f8f9fa;
+            --text-muted: #6c757d;
         }
         
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
             margin: 0;
             padding: 0;
-            background-color: var(--light);
-            color: var(--dark);
+            background-color: var(--dark);
+            color: var(--text);
         }
         
         .dashboard {
@@ -85,7 +101,7 @@ HTML = """
         }
         
         .header {
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            background: linear-gradient(135deg, var(--primary-dark), var(--secondary-dark));
             color: white;
             padding: 20px;
             border-radius: 10px 10px 0 0;
@@ -139,7 +155,7 @@ HTML = """
         }
         
         .card {
-            background: white;
+            background: var(--darker);
             border-radius: 10px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             overflow: hidden;
@@ -152,7 +168,7 @@ HTML = """
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background-color: #f8f9fa;
+            background-color: var(--darkest);
         }
         
         .card-content {
@@ -167,11 +183,12 @@ HTML = """
         
         .info-label {
             font-weight: 500;
-            color: #555;
+            color: var(--text-muted);
         }
         
         .info-value {
             font-family: 'Consolas', monospace;
+            color: var(--text);
         }
         
         .badge {
@@ -191,7 +208,7 @@ HTML = """
         
         .rdp-card {
             margin-top: 0;
-            background: white;
+            background: var(--darker);
             border-radius: 10px;
             overflow: hidden;
         }
@@ -237,21 +254,22 @@ HTML = """
         .detail-label {
             width: 100px;
             font-weight: 500;
-            color: #555;
+            color: var(--text-muted);
         }
         
         .detail-value {
             flex: 1;
             font-family: 'Consolas', monospace;
-            background: #f5f5f5;
+            background: var(--dark);
             padding: 8px 12px;
             border-radius: 5px;
-            border: 1px solid #eee;
+            border: 1px solid var(--border);
+            color: var(--text);
         }
         
         .progress-bar-container {
             height: 8px;
-            background-color: #e9ecef;
+            background-color: var(--border);
             border-radius: 4px;
             margin: 8px 0;
             overflow: hidden;
@@ -277,24 +295,24 @@ HTML = """
             justify-content: space-between;
             margin-top: 5px;
             font-size: 12px;
-            color: #666;
+            color: var(--text-muted);
         }
         
         .logs {
             margin-top: 0;
             max-height: 200px;
             overflow-y: auto;
-            background: #2b2b2b;
+            background: var(--darkest);
             padding: 15px;
             border-radius: 5px;
             font-family: 'Consolas', monospace;
             font-size: 12px;
-            color: #f0f0f0;
+            color: var(--text);
         }
         
         .log-entry {
             margin-bottom: 5px;
-            border-bottom: 1px solid #3a3a3a;
+            border-bottom: 1px solid var(--border);
             padding-bottom: 5px;
             white-space: pre-wrap;
             word-break: break-all;
@@ -311,11 +329,11 @@ HTML = """
         }
         
         .stat-box {
-            background: #f8f9fa;
+            background: var(--darker);
             border-radius: 5px;
             padding: 15px;
             text-align: center;
-            border: 1px solid #eee;
+            border: 1px solid var(--border);
         }
         
         .stat-value {
@@ -327,7 +345,7 @@ HTML = """
         
         .stat-label {
             font-size: 12px;
-            color: #666;
+            color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
@@ -335,7 +353,7 @@ HTML = """
         .time-remaining {
             text-align: center;
             padding: 15px;
-            background: #f8f9fa;
+            background: var(--darker);
             border-radius: 5px;
             margin-top: 15px;
         }
@@ -350,11 +368,81 @@ HTML = """
         
         .time-label {
             font-size: 12px;
-            color: #666;
+            color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
+        .copy-button {
+            background: var(--darkest);
+            color: var(--text);
+            border: 1px solid var(--border);
+            margin-left: 8px;
+            cursor: pointer;
+        }
+        
+        .copy-button:hover {
+            background: var(--primary-dark);
+            color: white;
+        }
+        
+        .log-count {
+            font-size: 12px;
+            padding: 4px 8px;
+            background: var(--darkest);
+            border-radius: 12px;
+            color: var(--text-muted);
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+        
+        .monitor-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .status-indicator {
+            height: 8px;
+            width: 8px;
+            border-radius: 50%;
+            background-color: var(--primary);
+            animation: pulse 1.5s infinite;
+        }
+        
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 140px;
+            background-color: var(--darkest);
+            color: var(--text);
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -70px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 12px;
+            border: 1px solid var(--border);
+        }
+        
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        
         @media (max-width: 768px) {
             .grid {
                 grid-template-columns: 1fr;
@@ -368,6 +456,7 @@ HTML = """
         #server-time {
             font-size: 14px;
             opacity: 0.8;
+            color: var(--text-muted);
         }
     </style>
 </head>
@@ -788,12 +877,15 @@ HTML = """
 
 # Run the server
 if __name__ == "__main__":
-    PORT = int(os.environ.get("PORT", 7860))
+    PORT = args.port
     Handler = StatusHandler
     
     try:
+        print(f"Starting RDP Monitor dashboard on port {PORT}...")
         with socketserver.TCPServer(("", PORT), Handler) as httpd:
-            print(f"Web server running at port {PORT}")
+            print(f"Server running at http://localhost:{PORT}/")
             httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("Server stopped by user")
     except Exception as e:
-        print(f"Error starting web server: {e}")
+        print(f"Server error: {e}")
