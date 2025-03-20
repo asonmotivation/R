@@ -3,16 +3,24 @@ import socketserver
 import json
 import threading
 import time
-from monitor import status  # Import status directly from monitor module
+import importlib
+import sys
+
+# Import monitor as a module to refresh on each request
+import monitor
 
 # Handler class
 class StatusHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/status':
+            # Reload the monitor module to get fresh status data
+            importlib.reload(monitor)
+            
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')  # Enable CORS
             self.end_headers()
-            self.wfile.write(json.dumps(status).encode())
+            self.wfile.write(json.dumps(monitor.status).encode())
         else:
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
