@@ -5,13 +5,16 @@ import json
 import logging
 from datetime import datetime, timezone, timedelta
 
+# Create logs directory if it doesn't exist
+os.makedirs("/home/user/app/logs", exist_ok=True)
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler("/app/logs/monitor.log")
+        logging.FileHandler("/home/user/app/logs/monitor.log")
     ]
 )
 
@@ -28,7 +31,7 @@ MAX_RUNTIME = int(os.environ.get("MAX_RUNTIME", "21000"))  # 5h50m in seconds
 MAX_RETRY_ATTEMPTS = 3  # Maximum retry attempts for API calls
 
 # Status file for web interface
-STATUS_FILE = "/app/logs/status.json"
+STATUS_FILE = "/home/user/app/logs/status.json"
 
 # Initialize status
 status = {
@@ -264,7 +267,7 @@ def monitor_and_restart():
 
 if __name__ == "__main__":
     # Make sure logs directory exists
-    os.makedirs("/app/logs", exist_ok=True)
+    os.makedirs("/home/user/app/logs", exist_ok=True)
     
     # Initialize status file
     update_status_file()
